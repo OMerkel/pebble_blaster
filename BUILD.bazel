@@ -6,22 +6,45 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "input_mapping",
+    srcs = ["src/input_mapping.cpp"],
+    hdrs = ["include/pebble_blaster/input_mapping.hpp"],
+    deps = [":core"],
+    visibility = ["//visibility:public"],
+)
+
 cc_test(
     name = "core_test",
     size = "small",
     srcs = ["tests/core_test.cpp"],
-    deps = [":core", "@googletest//:gtest_main"],
+    deps = [":core", ":input_mapping", "@googletest//:gtest_main"],
 )
 
 cc_library(
     name = "renderer",
-    srcs = ["src/renderer.cpp"],
-    hdrs = ["include/pebble_blaster/renderer.hpp"],
+    srcs = ["src/renderer.cpp", "src/text_renderer.cpp"],
+    hdrs = ["include/pebble_blaster/renderer.hpp", "include/pebble_blaster/text_renderer.hpp"],
     deps = [":core", "@sfml//:graphics"],
 )
 
 cc_binary(
     name = "pebble_blaster",
-    srcs = ["src/main.cpp"],
-    deps = [":core", ":renderer", "@sfml//:graphics"],
+    srcs = [
+        "include/pebble_blaster/application.hpp",
+        "include/pebble_blaster/keyboard_input.hpp",
+        "include/pebble_blaster/smoke_test.hpp",
+        "src/application.cpp",
+        "src/gamepad_input.hpp",
+        "src/keyboard_input.cpp",
+        "src/main.cpp",
+        "src/smoke_test.cpp",
+    ],
+    deps = [":core", ":input_mapping", ":renderer", "@sfml//:graphics"],
+)
+
+cc_binary(
+    name = "gamepad_test",
+    srcs = ["src/gamepad_test.cpp", "src/gamepad_input.hpp", "include/pebble_blaster/input_mapping.hpp"],
+    deps = [":input_mapping", ":renderer", "@sfml//:graphics"],
 )

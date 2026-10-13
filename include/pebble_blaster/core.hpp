@@ -28,6 +28,7 @@ enum class RockSize { small, medium, large };
 struct Input {
     bool left{};
     bool right{};
+    float turn{};
     bool thrust{};
     bool fire{};
 };
