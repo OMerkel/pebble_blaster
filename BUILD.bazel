@@ -45,6 +45,6 @@ cc_binary(
 
 cc_binary(
     name = "gamepad_test",
-    srcs = ["src/gamepad_test.cpp", "src/gamepad_input.hpp", "include/pebble_blaster/input_mapping.hpp"],
-    deps = [":input_mapping", ":renderer", "@sfml//:graphics"],
+    srcs = ["src/gamepad_test.cpp"],
+    deps = [":renderer", "@sfml//:graphics"],
 )

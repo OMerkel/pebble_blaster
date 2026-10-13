@@ -1,17 +1,18 @@
-#include "gamepad_input.hpp"
 #include "pebble_blaster/text_renderer.hpp"
 
 #include <SFML/Graphics.hpp>
+#include <SFML/Window/Joystick.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <string>
+#include <string_view>
 
 namespace {
 
-constexpr sf::Vector2u windowSize{960, 640};
+constexpr sf::Vector2u windowSize{1000, 680};
 constexpr sf::Color background{12, 19, 23};
 constexpr sf::Color shell{35, 47, 53};
 constexpr sf::Color shellOutline{87, 108, 113};
@@ -19,6 +20,41 @@ constexpr sf::Color idle{79, 99, 105};
 constexpr sf::Color active{114, 245, 183};
 constexpr sf::Color textColor{221, 234, 231};
 constexpr sf::Color muted{117, 143, 147};
+
+float axisPosition(unsigned int joystick, sf::Joystick::Axis axis) {
+    return sf::Joystick::hasAxis(joystick, axis)
+               ? sf::Joystick::getAxisPosition(joystick, axis)
+               : 0.0F;
+}
+
+bool buttonPressed(unsigned int joystick, unsigned int button, unsigned int count) {
+    return button < count && sf::Joystick::isButtonPressed(joystick, button);
+}
+
+void label(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+           std::string value, sf::Vector2f position, float scale, sf::Color color) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::toupper(character)); });
+    textRenderer.draw(target, value, position, scale, color);
+}
+
+std::string axisLabel(std::string_view name, float value) {
+    std::string result(name);
+    result += value < 0.0F ? " NEG " : " POS ";
+    result += std::to_string(static_cast<int>(std::abs(value)));
+    return result;
+}
+
+void circle(sf::RenderTarget &target, sf::Vector2f center, float radius, sf::Color fill,
+            sf::Color outline) {
+    sf::CircleShape shape(radius);
+    shape.setOrigin({radius, radius});
+    shape.setPosition(center);
+    shape.setFillColor(fill);
+    shape.setOutlineThickness(3.0F);
+    shape.setOutlineColor(outline);
+    target.draw(shape);
+}
 
 void rectangle(sf::RenderTarget &target, sf::Vector2f position, sf::Vector2f size,
                sf::Color color) {
@@ -28,76 +64,14 @@ void rectangle(sf::RenderTarget &target, sf::Vector2f position, sf::Vector2f siz
     target.draw(shape);
 }
 
-void circle(sf::RenderTarget &target, sf::Vector2f center, float radius, sf::Color color,
-            sf::Color outline = sf::Color::Transparent) {
-    sf::CircleShape shape(radius);
-    shape.setPosition({center.x - radius, center.y - radius});
-    shape.setFillColor(color);
-    if (outline != sf::Color::Transparent) {
-        shape.setOutlineThickness(3.0F);
-        shape.setOutlineColor(outline);
-    }
-    target.draw(shape);
-}
-
-void label(const pebble_blaster::TextRenderer &font, sf::RenderTarget &target, std::string value,
-           pebble_blaster::Vec2 position, float scale, sf::Color color) {
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char character) { return static_cast<char>(std::toupper(character)); });
-    font.draw(target, value, {position.x, position.y}, scale, color);
-}
-
-void drawDpad(const pebble_blaster::TextRenderer &font, sf::RenderTarget &target,
-              const pebble_blaster::JoystickState &state) {
-    const sf::Vector2f center{262.0F, 278.0F};
-    const auto directionColor = [&](bool pressed) { return pressed ? active : idle; };
-    rectangle(target, {center.x - 13.0F, center.y - 48.0F}, {26.0F, 96.0F},
-              idle);
-    rectangle(target, {center.x - 48.0F, center.y - 13.0F}, {96.0F, 26.0F},
-              idle);
-    rectangle(target, {center.x - 13.0F, center.y - 48.0F}, {26.0F, 27.0F},
-              directionColor(state.hasPovY && state.povY < -50.0F));
-    rectangle(target, {center.x - 48.0F, center.y - 13.0F}, {27.0F, 26.0F},
-              directionColor(state.hasPovX && state.povX < -50.0F));
-    rectangle(target, {center.x + 21.0F, center.y - 13.0F}, {27.0F, 26.0F},
-              directionColor(state.hasPovX && state.povX > 50.0F));
-    rectangle(target, {center.x - 13.0F, center.y + 21.0F}, {26.0F, 27.0F},
-              directionColor(state.hasPovY && state.povY > 50.0F));
-    label(font, target, "DPAD", {center.x - 24.0F, center.y + 67.0F}, 2.0F, textColor);
-}
-
-void drawStick(const pebble_blaster::TextRenderer &font, sf::RenderTarget &target,
-               const pebble_blaster::JoystickState &state) {
-    const sf::Vector2f center{385.0F, 268.0F};
-    const float normalizedX = state.x / 100.0F;
-    const float normalizedY = state.y / 100.0F;
-    const bool moved = std::abs(normalizedX) > 0.2F || std::abs(normalizedY) > 0.2F;
-    circle(target, center, 48.0F, {22, 31, 36}, moved ? active : shellOutline);
-    circle(target, {center.x + normalizedX * 30.0F, center.y + normalizedY * 30.0F},
-           17.0F, moved ? active : idle);
-    label(font, target, "LEFT STICK", {center.x - 48.0F, center.y + 67.0F}, 2.0F,
-          textColor);
-}
-
-void drawFaceButton(const pebble_blaster::TextRenderer &font, sf::RenderTarget &target,
-                    const pebble_blaster::JoystickState &state, unsigned int button,
-                    sf::Vector2f center) {
-    const bool pressed = state.buttonPressed(button);
-    circle(target, center, 22.0F, pressed ? active : idle,
-           button == 0 ? active : sf::Color::Transparent);
-    label(font, target, std::to_string(button), {center.x - 6.0F, center.y - 7.0F}, 2.0F,
-          pressed ? background : textColor);
-}
-
-void drawController(const pebble_blaster::TextRenderer &font, sf::RenderWindow &window,
-                    const pebble_blaster::JoystickState &state) {
-    sf::ConvexShape body(18);
-    const std::array<sf::Vector2f, 18> points{{
-        {188.0F, 243.0F}, {234.0F, 198.0F}, {333.0F, 184.0F}, {394.0F, 208.0F},
-        {566.0F, 208.0F}, {627.0F, 184.0F}, {726.0F, 198.0F}, {772.0F, 243.0F},
-        {807.0F, 366.0F}, {785.0F, 423.0F}, {748.0F, 437.0F}, {703.0F, 414.0F},
-        {646.0F, 352.0F}, {314.0F, 352.0F}, {257.0F, 414.0F}, {212.0F, 437.0F},
-        {175.0F, 423.0F}, {153.0F, 366.0F},
+void drawControllerContour(sf::RenderTarget &target) {
+    sf::ConvexShape body(20);
+    const std::array<sf::Vector2f, 20> points{{
+        {161.0F, 231.0F}, {193.0F, 174.0F}, {286.0F, 141.0F}, {366.0F, 159.0F},
+        {424.0F, 202.0F}, {576.0F, 202.0F}, {634.0F, 159.0F}, {714.0F, 141.0F},
+        {807.0F, 174.0F}, {839.0F, 231.0F}, {878.0F, 415.0F}, {856.0F, 472.0F},
+        {802.0F, 500.0F}, {749.0F, 462.0F}, {688.0F, 390.0F}, {312.0F, 390.0F},
+        {251.0F, 462.0F}, {198.0F, 500.0F}, {144.0F, 472.0F}, {122.0F, 415.0F},
     }};
     for (std::size_t index = 0; index < points.size(); ++index) {
         body.setPoint(index, points[index]);
@@ -105,106 +79,184 @@ void drawController(const pebble_blaster::TextRenderer &font, sf::RenderWindow &
     body.setFillColor(shell);
     body.setOutlineThickness(3.0F);
     body.setOutlineColor(shellOutline);
-    window.draw(body);
-
-    drawDpad(font, window, state);
-    drawStick(font, window, state);
-
-    circle(window, {580.0F, 280.0F}, 45.0F, {27, 37, 42}, shellOutline);
-    circle(window, {580.0F, 280.0F}, 19.0F, idle);
-
-    drawFaceButton(font, window, state, 0, {705.0F, 306.0F});
-    drawFaceButton(font, window, state, 1, {744.0F, 267.0F});
-    drawFaceButton(font, window, state, 2, {666.0F, 267.0F});
-    drawFaceButton(font, window, state, 3, {705.0F, 228.0F});
-
-    const bool startPressed = state.buttonPressed(7);
-        rectangle(window, {455.0F, 250.0F}, {54.0F, 22.0F}, startPressed ? active : idle);
-        label(font, window, "7", {477.0F, 254.0F}, 2.0F,
-          startPressed ? background : textColor);
-        label(font, window, "START", {458.0F, 280.0F}, 2.0F, textColor);
+    target.draw(body);
 }
 
-void drawButtonGrid(const pebble_blaster::TextRenderer &font, sf::RenderWindow &window,
-                    const pebble_blaster::JoystickState &state) {
-    label(font, window, "DETECTED BUTTONS", {30.0F, 492.0F}, 2.0F, muted);
+void drawStick(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+               sf::Vector2f center, float x, float y, bool detected, bool clicked,
+               std::string_view title, std::string_view xName, std::string_view yName) {
+    const bool moved = detected && (std::abs(x) > 20.0F || std::abs(y) > 20.0F);
+    const bool highlighted = moved || clicked;
+    circle(target, center, 65.0F, {22, 31, 36}, highlighted ? active : shellOutline);
+    const sf::Vector2f marker{center.x + x * 0.45F, center.y + y * 0.45F};
+    circle(target, marker, 21.0F, highlighted ? active : idle,
+           highlighted ? active : shellOutline);
+    label(textRenderer, target, std::string(title), {center.x - 78.0F, center.y + 83.0F}, 2.0F,
+          detected ? textColor : muted);
+    label(textRenderer, target, axisLabel(xName, x), {center.x - 82.0F, center.y + 111.0F},
+          1.5F, detected ? textColor : muted);
+    label(textRenderer, target, axisLabel(yName, y), {center.x - 82.0F, center.y + 133.0F},
+          1.5F, detected ? textColor : muted);
+}
+
+void drawDpad(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+              unsigned int joystick) {
+    constexpr sf::Vector2f center{250.0F, 280.0F};
+    const float x = axisPosition(joystick, sf::Joystick::Axis::PovX);
+    const float y = axisPosition(joystick, sf::Joystick::Axis::PovY);
+    rectangle(target, {center.x - 13.0F, center.y - 45.0F}, {26.0F, 90.0F}, idle);
+    rectangle(target, {center.x - 45.0F, center.y - 13.0F}, {90.0F, 26.0F}, idle);
+    rectangle(target, {center.x - 13.0F, center.y - 45.0F}, {26.0F, 26.0F},
+              y > 50.0F ? active : idle);
+    rectangle(target, {center.x - 45.0F, center.y - 13.0F}, {26.0F, 26.0F},
+              x < -50.0F ? active : idle);
+    rectangle(target, {center.x + 19.0F, center.y - 13.0F}, {26.0F, 26.0F},
+              x > 50.0F ? active : idle);
+    rectangle(target, {center.x - 13.0F, center.y + 19.0F}, {26.0F, 26.0F},
+              y < -50.0F ? active : idle);
+    label(textRenderer, target, "POV DPAD", {center.x - 40.0F, center.y + 62.0F}, 2.0F,
+          textColor);
+    label(textRenderer, target, axisLabel("POVX", x), {center.x - 45.0F, center.y + 90.0F},
+          1.5F, muted);
+    label(textRenderer, target, axisLabel("POVY", y), {center.x - 45.0F, center.y + 112.0F},
+          1.5F, muted);
+}
+
+void drawShellButton(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+                     unsigned int joystick, unsigned int buttonCount, unsigned int button,
+                     sf::Vector2f center, sf::Vector2f size) {
+    const bool available = button < buttonCount;
+    const bool pressed = available && buttonPressed(joystick, button, buttonCount);
+    rectangle(target, {center.x - size.x * 0.5F, center.y - size.y * 0.5F}, size,
+              pressed ? active : (available ? shellOutline : idle));
+    label(textRenderer, target, std::to_string(button), {center.x - 4.0F, center.y - 6.0F},
+          1.5F, pressed ? background : textColor);
+}
+
+void drawFaceButton(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+                    unsigned int joystick, unsigned int buttonCount, unsigned int button,
+                    sf::Vector2f center) {
+    const bool available = button < buttonCount;
+    const bool pressed = available && buttonPressed(joystick, button, buttonCount);
+    circle(target, center, 19.0F, pressed ? active : idle,
+           available ? shellOutline : muted);
+    label(textRenderer, target, std::to_string(button), {center.x - 4.0F, center.y - 6.0F},
+          1.5F, pressed ? background : textColor);
+}
+
+void drawShellButtons(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+                      unsigned int joystick, unsigned int buttonCount) {
+    drawFaceButton(textRenderer, target, joystick, buttonCount, 0, {724.0F, 279.0F});
+    drawFaceButton(textRenderer, target, joystick, buttonCount, 1, {760.0F, 315.0F});
+    drawFaceButton(textRenderer, target, joystick, buttonCount, 2, {796.0F, 279.0F});
+    drawFaceButton(textRenderer, target, joystick, buttonCount, 3, {760.0F, 243.0F});
+
+    drawShellButton(textRenderer, target, joystick, buttonCount, 4, {336.0F, 190.0F},
+                    {62.0F, 22.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 5, {664.0F, 190.0F},
+                    {62.0F, 22.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 6, {336.0F, 232.0F},
+                    {48.0F, 20.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 7, {664.0F, 232.0F},
+                    {48.0F, 20.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 13, {500.0F, 232.0F},
+                    {104.0F, 30.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 8, {470.0F, 275.0F},
+                    {48.0F, 20.0F});
+    drawShellButton(textRenderer, target, joystick, buttonCount, 9, {530.0F, 275.0F},
+                    {48.0F, 20.0F});
+
+    const bool psAvailable = 12 < buttonCount;
+    const bool psPressed = psAvailable && buttonPressed(joystick, 12, buttonCount);
+    circle(target, {500.0F, 350.0F}, 19.0F, psPressed ? active : idle,
+           psAvailable ? shellOutline : muted);
+    label(textRenderer, target, "PS", {490.0F, 344.0F}, 1.5F,
+          psPressed ? background : textColor);
+    label(textRenderer, target, "12", {493.0F, 375.0F}, 1.5F,
+          psAvailable ? textColor : muted);
+}
+
+void drawButtonGrid(const pebble_blaster::TextRenderer &textRenderer, sf::RenderTarget &target,
+                    unsigned int joystick, unsigned int buttonCount) {
+    label(textRenderer, target, "BUTTONS", {48.0F, 515.0F}, 2.0F, muted);
     for (unsigned int button = 0; button < sf::Joystick::ButtonCount; ++button) {
-        const float x = 30.0F + static_cast<float>(button % 8) * 112.0F;
-        const float y = 514.0F + static_cast<float>(button / 8) * 27.0F;
-        const bool detected = state.buttonPressed(button);
-        const sf::Color fill = detected ? active : (button < state.buttonCount ? shellOutline : background);
-        rectangle(window, {x, y}, {92.0F, 22.0F}, fill);
-        const sf::Color ink = detected ? background : muted;
-        label(font, window, std::to_string(button), {x + 7.0F, y + 3.0F}, 2.0F, ink);
+        const float x = 48.0F + static_cast<float>(button % 8) * 114.0F;
+        const float y = 545.0F + static_cast<float>(button / 8) * 29.0F;
+        const bool available = button < buttonCount;
+        const bool pressed = available && buttonPressed(joystick, button, buttonCount);
+        rectangle(target, {x, y}, {94.0F, 23.0F},
+                  pressed ? active : (available ? shellOutline : background));
+        label(textRenderer, target, std::to_string(button), {x + 8.0F, y + 3.0F}, 1.5F,
+              pressed ? background : muted);
     }
 }
 
-void drawStatus(const pebble_blaster::TextRenderer &font, sf::RenderWindow &window,
-                const pebble_blaster::JoystickState &state) {
-    const sf::Color connectedColor = state.index ? active : sf::Color{255, 142, 116};
-    label(font, window, "GAMEPAD INPUT TEST", {30.0F, 22.0F}, 3.0F, textColor);
-    if (!state.index) {
-        label(font, window, "NO CONTROLLER CONNECTED", {30.0F, 72.0F}, 2.0F, connectedColor);
-        label(font, window, "CONNECT A GAMEPAD TO SEE LIVE INPUT", {30.0F, 101.0F}, 2.0F,
-              muted);
+void draw(sf::RenderWindow &window, const pebble_blaster::TextRenderer &textRenderer) {
+    sf::Joystick::update();
+    unsigned int joystick = sf::Joystick::Count;
+    for (unsigned int index = 0; index < sf::Joystick::Count; ++index) {
+        if (sf::Joystick::isConnected(index)) {
+            joystick = index;
+            break;
+        }
+    }
+
+    window.clear(background);
+    label(textRenderer, window, "GAMEPAD INPUT TEST", {32.0F, 22.0F}, 3.0F, textColor);
+    if (joystick == sf::Joystick::Count) {
+        label(textRenderer, window, "NO CONTROLLER CONNECTED", {32.0F, 76.0F}, 2.0F,
+              sf::Color{255, 142, 116});
+        window.display();
         return;
     }
 
-    std::string device = "DEVICE ";
-    device += state.identification.name.toAnsiString();
-    device += " INDEX ";
-    device += std::to_string(*state.index);
-    label(font, window, device, {30.0F, 67.0F}, 2.0F, connectedColor);
+    const auto identification = sf::Joystick::getIdentification(joystick);
+    const unsigned int buttonCount = sf::Joystick::getButtonCount(joystick);
+    const std::string device = "DEVICE " + identification.name.toAnsiString() + " INDEX " +
+                               std::to_string(joystick);
+    label(textRenderer, window, device, {32.0F, 72.0F}, 2.0F, active);
+    drawControllerContour(window);
 
-    std::string axes = "X ";
-    axes += std::to_string(static_cast<int>(state.x));
-    axes += " Y ";
-    axes += std::to_string(static_cast<int>(state.y));
-    axes += " POVX ";
-    axes += std::to_string(static_cast<int>(state.povX));
-    axes += " POVY ";
-    axes += std::to_string(static_cast<int>(state.povY));
-    label(font, window, axes, {30.0F, 96.0F}, 2.0F, muted);
+    const float leftX = axisPosition(joystick, sf::Joystick::Axis::X);
+    const float leftY = axisPosition(joystick, sf::Joystick::Axis::Y);
+    const float rightX = axisPosition(joystick, sf::Joystick::Axis::Z);
+    const float rightY = axisPosition(joystick, sf::Joystick::Axis::R);
+    drawStick(textRenderer, window, {390.0F, 330.0F}, leftX, leftY,
+              sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::X) &&
+                  sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::Y),
+              buttonPressed(joystick, 10, buttonCount), "LEFT STICK B10", "X", "Y");
+    drawDpad(textRenderer, window, joystick);
+    drawStick(textRenderer, window, {610.0F, 330.0F}, rightX, rightY,
+              sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::Z) &&
+                  sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::R),
+              buttonPressed(joystick, 11, buttonCount), "RIGHT STICK B11", "Z", "R");
+    drawShellButtons(textRenderer, window, joystick, buttonCount);
 
-    const auto mappingColor = [](bool activeState) { return activeState ? active : muted; };
-        const std::string turnLabel = state.input.turn < 0.0F
-                              ? "TURN LEFT"
-                              : (state.input.turn > 0.0F ? "TURN RIGHT" : "TURN");
-        label(font, window, turnLabel, {30.0F, 130.0F}, 2.0F,
-            mappingColor(state.input.turn != 0.0F));
-    label(font, window, "THRUST", {250.0F, 130.0F}, 2.0F,
-          mappingColor(state.input.thrust));
-    label(font, window, "FIRE B0 B1", {420.0F, 130.0F}, 2.0F,
-          mappingColor(state.input.fire));
-    label(font, window, "START B7", {590.0F, 130.0F}, 2.0F,
-          mappingColor(state.buttonPressed(7)));
-
-    std::string buttonInfo = "BUTTON COUNT ";
-    buttonInfo += std::to_string(state.buttonCount);
-    label(font, window, buttonInfo, {30.0F, 160.0F}, 2.0F, muted);
+    label(textRenderer, window,
+          axisLabel("AUX U", axisPosition(joystick, sf::Joystick::Axis::U)),
+          {280.0F, 145.0F}, 1.5F,
+          sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::U) ? textColor : muted);
+    label(textRenderer, window,
+          axisLabel("AUX V", axisPosition(joystick, sf::Joystick::Axis::V)),
+          {610.0F, 145.0F}, 1.5F,
+          sf::Joystick::hasAxis(joystick, sf::Joystick::Axis::V) ? textColor : muted);
+    drawButtonGrid(textRenderer, window, joystick, buttonCount);
+    window.display();
 }
 
 } // namespace
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode(windowSize), "Pebble Blaster - Gamepad Test");
+    sf::RenderWindow window(sf::VideoMode(windowSize), "Pebble Blaster - Gamepad Input Test");
     window.setVerticalSyncEnabled(true);
-    pebble_blaster::TextRenderer font;
-
+    pebble_blaster::TextRenderer textRenderer;
     while (window.isOpen()) {
         while (const auto event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
         }
-
-        const pebble_blaster::JoystickState state = pebble_blaster::readJoystick();
-        window.clear(background);
-        drawStatus(font, window, state);
-        drawController(font, window, state);
-        drawButtonGrid(font, window, state);
-        window.display();
+        draw(window, textRenderer);
     }
-
     return 0;
 }

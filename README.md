@@ -53,23 +53,24 @@ The game opens with a **START** action; click it or press Enter.
 | Restart | R | - |
 | Quit | Close the window | - |
 
+## Gamepad Input Test
+
+Run the live controller diagnostic from the repository root:
+
+```powershell
+.\tools\invoke-bazel.ps1 run //:gamepad_test
+```
+
+The diagnostic displays both stick candidates, POV D-pad, extra axes, device
+identification, and live numbered buttons. SFML reports generic axis names, so
+the right-stick display uses Z/R and shows U/V separately for verification.
+
 Three lives, six simultaneous player shots, large/medium/small asteroid
 splitting, hostile saucers, and increasing waves. Rocks award 20/50/100 points;
 saucers award 200. Each 10,000 points earns a life. Respawns give three seconds
 of blinking protection. Best score is retained for the current session.
 Losing focus pauses the game. Resizing letterboxes the same playfield rather
 than stretching it or changing the simulation.
-
-## Gamepad Diagnostic
-
-Run from the repository root to open the live gamepad diagnostic window:
-
-```powershell
-.\tools\invoke-bazel.ps1 run //:gamepad_test
-```
-
-After building, the diagnostic executable is available at
-`bazel-bin\gamepad_test.exe` and can be launched directly.
 
 On Linux, run:
 
@@ -80,6 +81,12 @@ bazelisk run //:gamepad_test
 The window displays the first connected controller, its detected axes and
 buttons, and highlights the inputs mapped to turn, thrust, fire, and Start.
 Close the window to exit.
+
+### Pairing a controller
+
+Pair the Bluetooth controller with your operating system before starting the
+diagnostic. Pairing controls vary by model; consult the controller's manual for
+the correct button combination, then add it as a Bluetooth device in your OS.
 
 ## Tests and coverage
 
