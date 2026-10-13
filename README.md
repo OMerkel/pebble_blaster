@@ -37,12 +37,38 @@ The game opens with a **START** action; click it or press Enter.
 | Restart | R |
 | Quit | Close the window |
 
+## Gamepad Input Test
+
+Run the live controller diagnostic from the repository root:
+
+```powershell
+.\tools\invoke-bazel.ps1 run //:gamepad_test
+```
+
+The diagnostic displays both stick candidates, POV D-pad, extra axes, device
+identification, and live numbered buttons. SFML reports generic axis names, so
+the right-stick display uses Z/R and shows U/V separately for verification.
+
 Three lives, six simultaneous player shots, large/medium/small asteroid
 splitting, hostile saucers, and increasing waves. Rocks award 20/50/100 points;
 saucers award 200. Each 10,000 points earns a life. Respawns give three seconds
 of blinking protection. Best score is retained for the current session.
 Losing focus pauses the game. Resizing letterboxes the same playfield rather
 than stretching it or changing the simulation.
+
+### Pairing a controller
+
+Since this question comes up from time to time:
+
+Any Bluetooth game controller must be paired with your computer before usage.
+Pairing mode of the controller is often activated by
+
+- pressing a button **share** and **home/PS** together for 3 to 5 seconds or
+- pressing a button **❤️** followed by an additional button to activate pairing
+
+When controller's pairing mode is activated it is a matter of adding the controller as an input device on your operating system.
+
+Consult your specific controller's manual if needed.
 
 ## Tests and coverage
 

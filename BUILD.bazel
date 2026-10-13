@@ -25,3 +25,9 @@ cc_binary(
     srcs = ["src/main.cpp"],
     deps = [":core", ":renderer", "@sfml//:graphics"],
 )
+
+cc_binary(
+    name = "gamepad_test",
+    srcs = ["src/gamepad_test.cpp"],
+    deps = [":renderer", "@sfml//:graphics"],
+)
