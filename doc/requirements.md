@@ -264,6 +264,12 @@ WHEN the requirement or test implementation is reviewed
 THEN the requirement shall name the suite/case and the test declaration shall carry its `REQ-*` ID comment.
 Verification: This document and `tests/core_test.cpp` requirement comments.
 
+Scenario: NFR-DOC-001 Project-owned C++ files have Doxygen file headers
+GIVEN a project-owned `.cpp` or `.hpp` file
+WHEN its file-level documentation is reviewed
+THEN its Doxygen comment shall include a matching `@file` tag and a concise `@brief` description, and a `.hpp` comment shall immediately follow `#pragma once`.
+Verification: Not automated; inspect all project-owned `.cpp` and `.hpp` files under `src/`, `include/`, and `tests/`.
+
 ## Requirement Coverage KPI
 
 Calculate automated requirement coverage as:

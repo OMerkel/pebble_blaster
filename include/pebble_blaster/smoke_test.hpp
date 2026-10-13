@@ -1,4 +1,11 @@
 #pragma once
+/**
+ * @file smoke_test.hpp
+ * @brief Declares simulation and rendering smoke-test entry points.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 
 #include <filesystem>
 

@@ -1,3 +1,10 @@
+/**
+ * @file smoke_test.cpp
+ * @brief Implements simulation and rendering smoke tests.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/smoke_test.hpp"
 
 #include "pebble_blaster/core.hpp"

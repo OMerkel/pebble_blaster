@@ -1,3 +1,10 @@
+/**
+ * @file core.cpp
+ * @brief Implements the game simulation and core gameplay logic.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/core.hpp"
 
 #include <algorithm>

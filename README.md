@@ -88,6 +88,13 @@ Pair the Bluetooth controller with your operating system before starting the
 diagnostic. Pairing controls vary by model; consult the controller's manual for
 the correct button combination, then add it as a Bluetooth device in your OS.
 
+Since this question comes up from time to time:
+
+Pairing mode of the controller is often activated by
+
+- pressing a button **share** and **home/PS** together for 3 to 5 seconds or
+- pressing a button **❤️** followed by an additional button to activate pairing
+
 ## Tests and coverage
 
 ### Windows

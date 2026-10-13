@@ -1,3 +1,10 @@
+/**
+ * @file input_mapping.cpp
+ * @brief Maps joystick samples to game input.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/input_mapping.hpp"
 
 #include <cmath>

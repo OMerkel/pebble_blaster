@@ -1,3 +1,10 @@
+/**
+ * @file keyboard_input.cpp
+ * @brief Maps keyboard events and state to game input.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/keyboard_input.hpp"
 
 #include <SFML/Window/Keyboard.hpp>

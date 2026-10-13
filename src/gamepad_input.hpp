@@ -1,4 +1,11 @@
 #pragma once
+/**
+ * @file gamepad_input.hpp
+ * @brief Declares and implements gamepad state sampling.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 
 #include "pebble_blaster/input_mapping.hpp"
 

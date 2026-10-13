@@ -1,4 +1,11 @@
 #pragma once
+/**
+ * @file core.hpp
+ * @brief Declares the game world, simulation, and core geometry types.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 
 #include <cstdint>
 #include <optional>

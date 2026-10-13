@@ -1,4 +1,11 @@
 #pragma once
+/**
+ * @file input_mapping.hpp
+ * @brief Declares joystick input samples and input mapping functions.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 
 #include "pebble_blaster/core.hpp"
 

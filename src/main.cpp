@@ -1,3 +1,13 @@
+/**
+ * @file main.cpp
+ * @brief Entry point for the Pebble Blaster game application.
+ *
+ * Entry point for an Arcade style fixed-shooter experience with
+ * modern engineering quality.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/application.hpp"
 #include "pebble_blaster/smoke_test.hpp"
 

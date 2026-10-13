@@ -1,3 +1,10 @@
+/**
+ * @file renderer.cpp
+ * @brief Implements rendering for game scenes and interface elements.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/renderer.hpp"
 
 #include <array>

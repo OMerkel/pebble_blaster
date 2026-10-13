@@ -1,3 +1,10 @@
+/**
+ * @file application.cpp
+ * @brief Runs the Pebble Blaster game application and its main loop.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 #include "pebble_blaster/application.hpp"
 
 #include "gamepad_input.hpp"

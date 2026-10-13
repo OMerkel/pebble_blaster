@@ -1,4 +1,11 @@
 #pragma once
+/**
+ * @file text_renderer.hpp
+ * @brief Declares the bitmap text rendering interface.
+ *
+ * @author Oliver Merkel
+ * @date 2026-10-14
+ */
 
 #include <SFML/Graphics/RenderTarget.hpp>
 
