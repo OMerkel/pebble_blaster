@@ -1,0 +1,55 @@
+name: Build and Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        shell: powershell
+        run: ./run.ps1 test
+      - name: Coverage gates
+        shell: powershell
+        run: ./run.ps1 coverage
+      - name: Build game
+        shell: powershell
+        run: ./tools/invoke-bazel.ps1 build //:pebble_blaster
+      - name: Render smoke check
+        shell: powershell
+        run: ./run.ps1 smoke
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-coverage
+          path: .artifacts/coverage
+      - name: Upload render screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-screenshots
+          path: .artifacts/screenshots
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+      - name: Platform dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libgl1-mesa-dri libglx-mesa0 libudev-dev libx11-dev libxrandr-dev libxcursor-dev libxi-dev
+      - name: Unit tests
+        run: bazel test //...
+      - name: Build and simulation smoke check
+        run: |
+          bazel build //:pebble_blaster
+          ./bazel-bin/pebble_blaster --simulation-smoke-test

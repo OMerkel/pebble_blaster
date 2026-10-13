@@ -1,0 +1,27 @@
+cc_library(
+    name = "core",
+    srcs = ["src/core.cpp"],
+    hdrs = ["include/pebble_blaster/core.hpp"],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "core_test",
+    size = "small",
+    srcs = ["tests/core_test.cpp"],
+    deps = [":core", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "renderer",
+    srcs = ["src/renderer.cpp"],
+    hdrs = ["include/pebble_blaster/renderer.hpp"],
+    deps = [":core", "@sfml//:graphics"],
+)
+
+cc_binary(
+    name = "pebble_blaster",
+    srcs = ["src/main.cpp"],
+    deps = [":core", ":renderer", "@sfml//:graphics"],
+)

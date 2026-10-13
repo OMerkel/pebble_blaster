@@ -1,0 +1,5 @@
+/bazel-*
+/.artifacts/
+*.profraw
+*.profdata
+*.user
