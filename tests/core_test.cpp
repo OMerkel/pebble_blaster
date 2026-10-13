@@ -1,4 +1,5 @@
 #include "pebble_blaster/core.hpp"
+#include "pebble_blaster/input_mapping.hpp"
 
 #include <gtest/gtest.h>
 
@@ -8,6 +9,7 @@
 namespace pebble_blaster {
 namespace {
 
+// Requirements: FR-GEO-001
 TEST(Geometry, VectorArithmetic) {
     const Vec2 vector{3.0F, 4.0F};
     EXPECT_FLOAT_EQ(lengthSquared(vector), 25.0F);
@@ -17,6 +19,7 @@ TEST(Geometry, VectorArithmetic) {
     EXPECT_NEAR(direction(std::numbers::pi_v<float> / 2.0F).y, 1.0F, 0.0001F);
 }
 
+// Requirements: FR-GEO-002
 TEST(Geometry, WrapsNegativePositiveAndMultipleScreenCrossings) {
     const Vec2 bounds{100.0F, 80.0F};
     EXPECT_FLOAT_EQ(wrap({-1.0F, 81.0F}, bounds).x, 99.0F);
@@ -25,12 +28,81 @@ TEST(Geometry, WrapsNegativePositiveAndMultipleScreenCrossings) {
     EXPECT_FLOAT_EQ(wrap({300.0F, -161.0F}, bounds).y, 79.0F);
 }
 
+// Requirements: FR-GEO-003
 TEST(Geometry, CollidesAcrossEdgesAndIncludesTangency) {
     const Vec2 bounds{100.0F, 80.0F};
     EXPECT_TRUE(overlaps({1.0F, 40.0F}, 2.0F, {99.0F, 40.0F}, 2.0F, bounds));
     EXPECT_TRUE(overlaps({50.0F, 1.0F}, 2.0F, {50.0F, 79.0F}, 2.0F, bounds));
     EXPECT_TRUE(overlaps({10.0F, 10.0F}, 2.0F, {14.0F, 10.0F}, 2.0F, bounds));
     EXPECT_FALSE(overlaps({10.0F, 10.0F}, 2.0F, {14.1F, 10.0F}, 2.0F, bounds));
+}
+
+// Requirements: FR-INPUT-001, NFR-PURE-001
+TEST(InputMapping, MapsStickDeadZoneAndDpadPriority) {
+    const JoystickInputSample neutral{.x = 19.0F, .y = -19.0F};
+    const Input neutralInput = mapJoystickInput(neutral);
+    EXPECT_FLOAT_EQ(neutralInput.turn, 0.0F);
+    EXPECT_FALSE(neutralInput.thrust);
+    EXPECT_FALSE(neutralInput.fire);
+
+    const JoystickInputSample stick{.x = 60.0F, .y = -50.0F, .povX = 49.0F, .button0 = true};
+    const Input stickInput = mapJoystickInput(stick);
+    EXPECT_FLOAT_EQ(stickInput.turn, 0.5F);
+    EXPECT_FALSE(stickInput.thrust);
+    EXPECT_TRUE(stickInput.fire);
+
+    const JoystickInputSample dpad{.x = 60.0F,
+                                   .y = -80.0F,
+                                   .povX = -50.0F,
+                                   .povY = -51.0F,
+                                   .button1 = true};
+    const Input dpadInput = mapJoystickInput(dpad);
+    EXPECT_FLOAT_EQ(dpadInput.turn, -1.0F);
+    EXPECT_TRUE(dpadInput.thrust);
+    EXPECT_TRUE(dpadInput.fire);
+
+    const JoystickInputSample leftStick{.x = -60.0F};
+    EXPECT_FLOAT_EQ(mapJoystickInput(leftStick).turn, -0.5F);
+
+    const JoystickInputSample povThrust{.povY = -51.0F};
+    EXPECT_TRUE(mapJoystickInput(povThrust).thrust);
+    EXPECT_FLOAT_EQ(stick.x, 60.0F);
+}
+
+// Requirements: FR-INPUT-002, NFR-PURE-001
+TEST(InputMapping, CombinesSourcesWithoutMutatingThem) {
+    const Input keyboard{.left = true, .fire = true};
+    const Input joystick{.right = true, .turn = 0.4F, .thrust = true, .fire = true};
+
+    const Input combined = combineInputs(keyboard, joystick);
+
+    EXPECT_TRUE(combined.left);
+    EXPECT_TRUE(combined.right);
+    EXPECT_FLOAT_EQ(combined.turn, 0.4F);
+    EXPECT_TRUE(combined.thrust);
+    EXPECT_TRUE(combined.fire);
+    EXPECT_TRUE(keyboard.left);
+    EXPECT_FALSE(keyboard.right);
+    EXPECT_FLOAT_EQ(keyboard.turn, 0.0F);
+    EXPECT_TRUE(joystick.right);
+    EXPECT_FLOAT_EQ(joystick.turn, 0.4F);
+
+    const Input joystickOnly{.left = true, .fire = true};
+    const Input joystickOnlyCombined = combineInputs({}, joystickOnly);
+    EXPECT_TRUE(joystickOnlyCombined.left);
+    EXPECT_TRUE(joystickOnlyCombined.fire);
+
+    const Input keyboardOnly{.right = true, .thrust = true, .fire = true};
+    const Input keyboardOnlyCombined = combineInputs(keyboardOnly, {});
+    EXPECT_TRUE(keyboardOnlyCombined.right);
+    EXPECT_TRUE(keyboardOnlyCombined.thrust);
+    EXPECT_TRUE(keyboardOnlyCombined.fire);
+
+    const Input neutralCombined = combineInputs({}, {});
+    EXPECT_FALSE(neutralCombined.left);
+    EXPECT_FALSE(neutralCombined.right);
+    EXPECT_FALSE(neutralCombined.thrust);
+    EXPECT_FALSE(neutralCombined.fire);
 }
 
 World scenario() {
@@ -46,6 +118,7 @@ void advance(Game &game, int steps, Input input = {}) {
     }
 }
 
+// Requirements: FR-CORE-001
 TEST(Game, StartsWithThreeLivesAndFourSafeRocks) {
     Game game(42);
     EXPECT_EQ(game.world().lives, 3);
@@ -59,6 +132,7 @@ TEST(Game, StartsWithThreeLivesAndFourSafeRocks) {
     }
 }
 
+// Requirements: FR-CORE-002
 TEST(Game, RejectsInvalidPlayfields) {
     EXPECT_THROW(Game(0, {399.0F, 800.0F}), std::invalid_argument);
     EXPECT_THROW(Game(0, {800.0F, 299.0F}), std::invalid_argument);
@@ -66,6 +140,7 @@ TEST(Game, RejectsInvalidPlayfields) {
     EXPECT_THROW(Game(0, {800.0F, std::numeric_limits<float>::quiet_NaN()}), std::invalid_argument);
 }
 
+// Requirements: FR-CORE-003
 TEST(Game, SeedReproducesWave) {
     Game first(123);
     Game second(123);
@@ -74,6 +149,7 @@ TEST(Game, SeedReproducesWave) {
     EXPECT_EQ(first.world().rocks.front().shape, second.world().rocks.front().shape);
 }
 
+// Requirements: FR-CORE-004
 TEST(Game, PausingFreezesSimulationAndResumes) {
     Game game(1);
     game.togglePause();
@@ -87,6 +163,7 @@ TEST(Game, PausingFreezesSimulationAndResumes) {
     EXPECT_GT(game.world().elapsed, 0.0F);
 }
 
+// Requirements: FR-CORE-005
 TEST(Game, IgnoresInvalidTimeAndCapsLargeSteps) {
     Game game(1);
     game.update(0.0F);
@@ -98,6 +175,7 @@ TEST(Game, IgnoresInvalidTimeAndCapsLargeSteps) {
     EXPECT_FLOAT_EQ(game.world().elapsed, 0.05F);
 }
 
+// Requirements: FR-CORE-006
 TEST(Ship, TurnsBothWaysAndOpposedControlsCancel) {
     Game game(scenario(), 1);
     const float original = game.world().ship.angle;
@@ -109,6 +187,18 @@ TEST(Ship, TurnsBothWaysAndOpposedControlsCancel) {
     EXPECT_NEAR(game.world().ship.angle, original, 0.00001F);
 }
 
+// Requirements: FR-CORE-006
+TEST(Ship, SupportsAnalogTurningAndClampsInput) {
+    Game game(scenario(), 1);
+    const float original = game.world().ship.angle;
+    game.update(0.05F, {.turn = 0.5F});
+    EXPECT_GT(game.world().ship.angle, original);
+    const float partialTurn = game.world().ship.angle;
+    game.update(0.05F, {.turn = 4.0F});
+    EXPECT_NEAR(game.world().ship.angle - partialTurn, 4.2F * 0.05F, 0.00001F);
+}
+
+// Requirements: FR-CORE-007
 TEST(Ship, AcceleratesCoastsAndCapsSpeed) {
     Game game(scenario(), 1);
     advance(game, 500, {.thrust = true});
@@ -120,6 +210,7 @@ TEST(Ship, AcceleratesCoastsAndCapsSpeed) {
     EXPECT_GT(lengthSquared(game.world().ship.velocity), 0.0F);
 }
 
+// Requirements: FR-CORE-008
 TEST(Ship, WrapsAtThePlayfieldBoundary) {
     World world = scenario();
     world.ship.position = {1199.0F, 799.0F};
@@ -130,6 +221,7 @@ TEST(Ship, WrapsAtThePlayfieldBoundary) {
     EXPECT_LT(game.world().ship.position.y, 5.0F);
 }
 
+// Requirements: FR-CORE-009
 TEST(Weapons, FiresForwardInheritsVelocityAndHonorsCooldown) {
     World world = scenario();
     world.ship.angle = 0.0F;
@@ -145,6 +237,7 @@ TEST(Weapons, FiresForwardInheritsVelocityAndHonorsCooldown) {
     EXPECT_EQ(game.world().bullets.size(), 2U);
 }
 
+// Requirements: FR-CORE-010
 TEST(Weapons, LimitsPlayerShotsButNotHostileShots) {
     World world = scenario();
     for (int index = 0; index < 6; ++index) {
@@ -159,6 +252,7 @@ TEST(Weapons, LimitsPlayerShotsButNotHostileShots) {
     EXPECT_EQ(other.world().bullets.size(), 7U);
 }
 
+// Requirements: FR-CORE-011
 TEST(Weapons, BulletsWrapAndExpire) {
     World world = scenario();
     world.bullets = {{{1199.0F, 799.0F}, {100.0F, 100.0F}, 0.08F, false}};
@@ -172,6 +266,7 @@ TEST(Weapons, BulletsWrapAndExpire) {
 
 class RockDestruction : public testing::TestWithParam<RockSize> {};
 
+// Requirements: FR-CORE-012
 TEST_P(RockDestruction, AwardsPointsAndSplitsIntoCorrectSize) {
     World world = scenario();
     world.rocks.front().size = GetParam();
@@ -195,6 +290,7 @@ TEST_P(RockDestruction, AwardsPointsAndSplitsIntoCorrectSize) {
 INSTANTIATE_TEST_SUITE_P(AllSizes, RockDestruction,
                          testing::Values(RockSize::large, RockSize::medium, RockSize::small));
 
+// Requirements: FR-CORE-028
 TEST(Rocks, MoveRotateAndWrap) {
     World world = scenario();
     world.rocks = {{{1199.0F, 799.0F}, {100.0F, 100.0F}, RockSize::large, 1.0F, 2.0F}};
@@ -204,6 +300,7 @@ TEST(Rocks, MoveRotateAndWrap) {
     EXPECT_FLOAT_EQ(game.world().rocks.front().angle, 1.1F);
 }
 
+// Requirements: FR-CORE-012
 TEST(Rocks, OneBulletDestroysOnlyOneRock) {
     World world = scenario();
     world.rocks.push_back(world.rocks.front());
@@ -214,11 +311,13 @@ TEST(Rocks, OneBulletDestroysOnlyOneRock) {
     EXPECT_EQ(game.world().score, 100);
 }
 
+// Requirements: FR-CORE-013
 TEST(Rocks, InvalidSizeIsRejected) {
     EXPECT_THROW(static_cast<void>(radius(static_cast<RockSize>(99))), std::invalid_argument);
     EXPECT_THROW(static_cast<void>(points(static_cast<RockSize>(99))), std::invalid_argument);
 }
 
+// Requirements: FR-CORE-014
 TEST(Lives, ProtectionPreventsCollisionsThenOneHitRespawns) {
     World world = scenario();
     world.rocks.front().position = world.ship.position;
@@ -237,6 +336,7 @@ TEST(Lives, ProtectionPreventsCollisionsThenOneHitRespawns) {
     EXPECT_EQ(game.world().lives, 2);
 }
 
+// Requirements: FR-CORE-015
 TEST(Lives, LastHitEndsGamePauseCannotReviveAndRestartResets) {
     World world = scenario();
     world.lives = 1;
@@ -258,6 +358,7 @@ TEST(Lives, LastHitEndsGamePauseCannotReviveAndRestartResets) {
     EXPECT_TRUE(game.world().particles.empty());
 }
 
+// Requirements: FR-CORE-016
 TEST(Lives, AwardsExtraLifeOncePerTenThousandPoints) {
     World world = scenario();
     world.score = 9900;
@@ -271,6 +372,7 @@ TEST(Lives, AwardsExtraLifeOncePerTenThousandPoints) {
     EXPECT_EQ(game.world().lives, 4);
 }
 
+// Requirements: FR-CORE-017
 TEST(Waves, EmptyFieldWaitsThenSpawnsNextWave) {
     World world = scenario();
     world.rocks.clear();
@@ -283,6 +385,7 @@ TEST(Waves, EmptyFieldWaitsThenSpawnsNextWave) {
     EXPECT_EQ(game.world().rocks.size(), 5U);
 }
 
+// Requirements: FR-CORE-017
 TEST(Waves, DifficultyCapsRockCount) {
     World world = scenario();
     world.rocks.clear();
@@ -293,6 +396,7 @@ TEST(Waves, DifficultyCapsRockCount) {
     EXPECT_EQ(game.world().rocks.size(), 12U);
 }
 
+// Requirements: FR-CORE-018
 TEST(Particles, MoveWrapAndExpire) {
     World world = scenario();
     world.particles = {{{1199.0F, 799.0F}, {100.0F, 100.0F}, 0.08F}};
@@ -303,6 +407,7 @@ TEST(Particles, MoveWrapAndExpire) {
     EXPECT_TRUE(game.world().particles.empty());
 }
 
+// Requirements: FR-CORE-019
 TEST(Saucers, TimerSpawnsSaucerAndItFiresAndExpires) {
     World world = scenario();
     world.saucerTimer = 0.0F;
@@ -317,6 +422,7 @@ TEST(Saucers, TimerSpawnsSaucerAndItFiresAndExpires) {
     EXPECT_FALSE(game.world().saucer);
 }
 
+// Requirements: FR-CORE-019
 TEST(Saucers, WeavesSinusoidallyAroundItsBaseline) {
     World world = scenario();
     world.saucer = Saucer{{300.0F, 300.0F}, {}, 10.0F, 10.0F};
@@ -340,6 +446,7 @@ TEST(Saucers, WeavesSinusoidallyAroundItsBaseline) {
     EXPECT_NEAR(lowestDisplacement, -24.0F, 0.1F);
 }
 
+// Requirements: FR-CORE-020
 TEST(Saucers, PlayerShotDestroysSaucerAndAwardsPoints) {
     World world = scenario();
     world.saucer = Saucer{{300.0F, 300.0F}, {}};
@@ -351,6 +458,7 @@ TEST(Saucers, PlayerShotDestroysSaucerAndAwardsPoints) {
     EXPECT_TRUE(game.world().bullets.empty());
 }
 
+// Requirements: FR-CORE-020
 TEST(Saucers, ContactDamagesShip) {
     World world = scenario();
     world.ship.protection = 0.0F;
@@ -360,6 +468,7 @@ TEST(Saucers, ContactDamagesShip) {
     EXPECT_EQ(game.world().lives, 2);
 }
 
+// Requirements: FR-CORE-020
 TEST(Saucers, HostileShotsDamageShipButNotRocksAndRespectProtection) {
     World world = scenario();
     world.bullets = {{world.ship.position, {}, 1.0F, true},
@@ -379,6 +488,7 @@ TEST(Saucers, HostileShotsDamageShipButNotRocksAndRespectProtection) {
     EXPECT_EQ(lastLife.world().phase, Phase::gameOver);
 }
 
+// Requirements: FR-CORE-021
 TEST(Saucers, AimUsesShortestWrappedDistanceOnBothAxes) {
     for (const Vec2 position : {Vec2{1190.0F, 790.0F}, Vec2{10.0F, 10.0F}}) {
         World world = scenario();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pebble_blaster/core.hpp"
+#include "pebble_blaster/text_renderer.hpp"
 
 #include <SFML/Graphics.hpp>
 
@@ -18,11 +19,10 @@ class Renderer {
     [[nodiscard]] static sf::View view(sf::Vector2u pixels, Vec2 bounds);
 
   private:
-    void text(sf::RenderTarget &target, std::string_view value, Vec2 position, float scale,
-              sf::Color color, bool centered = false) const;
     void ship(sf::RenderTarget &target, const Ship &ship, Vec2 bounds, bool thrust,
               float time) const;
     void rock(sf::RenderTarget &target, const Rock &rock, Vec2 bounds) const;
+    TextRenderer textRenderer_;
 };
 
 }
