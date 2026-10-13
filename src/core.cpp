@@ -116,8 +116,10 @@ void Game::spawnWave() {
 void Game::updateShip(float seconds, Input input) {
     auto &ship = world_.ship;
     ship.protection = std::max(0.0F, ship.protection - seconds);
-    ship.angle +=
-        (static_cast<float>(input.right) - static_cast<float>(input.left)) * 4.2F * seconds;
+    const float turn = std::clamp(input.turn + static_cast<float>(input.right) -
+                                      static_cast<float>(input.left),
+                                  -1.0F, 1.0F);
+    ship.angle += turn * 4.2F * seconds;
     if (input.thrust) {
         ship.velocity = ship.velocity + direction(ship.angle) * (310.0F * seconds);
     }

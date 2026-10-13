@@ -9,39 +9,63 @@ layer.
 ## System Overview
 
 Pebble Blaster is a single-process C++23 desktop game. The gameplay core is a
-deterministic, SFML-independent simulation; the application layer translates
-SFML events and held keys into core inputs; the renderer reads the core's
-snapshot and draws procedural geometry. Bazel owns dependency resolution and
-build/test execution.
+deterministic, SFML-independent simulation. `main.cpp` dispatches CLI modes;
+`application.cpp` coordinates the window/event loop, keyboard and joystick
+adapters, simulation, and renderer. `Renderer` draws gameplay geometry, while
+`TextRenderer` owns the bitmap glyph table and text drawing. The
+SFML-independent `input_mapping` library transforms joystick and keyboard value
+snapshots into new `Input` values without mutating its arguments. A separate
+gamepad diagnostic displays the detected device and live input mapping. Bazel
+owns dependency resolution and build/test execution.
 
 ```mermaid
 flowchart LR
-    User([Player]) -->|keyboard and mouse| Main["src/main.cpp<br/>window, events, fixed-step loop"]
-    Main -->|Input + elapsed tick| Core["pebble_blaster::Game<br/>src/core.cpp"]
-    Core -->|const World snapshot| Main
-    Main -->|Game + Screen + presentation state| Renderer["pebble_blaster::Renderer<br/>src/renderer.cpp"]
+    User([Player]) -->|keyboard, mouse, gamepad| App["src/application.cpp<br/>window, events, fixed-step loop"]
+    Main["src/main.cpp<br/>CLI dispatch"] --> App
+    Main --> Smoke["src/smoke_test.cpp<br/>simulation and render checks"]
+    App -->|Input + elapsed tick| Core["pebble_blaster::Game<br/>src/core.cpp"]
+    App --> Keyboard["src/keyboard_input.cpp<br/>keyboard adapter"]
+    App --> Joystick["src/gamepad_input.hpp<br/>SFML joystick poller"]
+    Keyboard -->|commands and Input| App
+    Joystick -->|JoystickInputSample| Mapping["input_mapping<br/>pure functions"]
+    Mapping -->|mapped Input| App
+    Keyboard --> Mapping
+    Diagnostic["//:gamepad_test<br/>live controller display"] --> Joystick
+    Diagnostic --> Text["TextRenderer"]
+    Core -->|const World snapshot| App
+    App -->|Game + Screen + presentation state| Renderer["pebble_blaster::Renderer<br/>src/renderer.cpp"]
+    Renderer --> Text
     Renderer -->|draw calls| SFML["SFML Graphics"]
     SFML --> Display[(Window / display)]
     Build["Bazel 8.4.2"] --> Main
+    Build --> App
     Build --> Core
     Build --> Renderer
+    Build --> Text
     Build --> Tests["core_test / GoogleTest"]
+    Build --> Diagnostic
     Build -. fetches pinned dependencies .-> Deps["SFML 3.1.0, GoogleTest 1.17.0"]
 ```
 
 The core does not depend on SFML and can be tested without a display or graphics
 context. Rendering and event handling are not part of the core coverage
-measurement; the executable's smoke mode separately exercises simulation and
-render output.
+measurement. The executable provides a display-free simulation smoke mode and
+a separate OpenGL render smoke mode.
 
 ## Components and Dependencies
 
 | Component | Responsibility | Depends on |
 | --- | --- | --- |
 | `core` | World state, rules, deterministic time-step simulation, collision and scoring | C++ standard library |
-| `renderer` | Procedural scene, HUD, menu screens, viewport and clickable action bounds | `core`, SFML Graphics |
-| `pebble_blaster` application | Window/event loop, key sampling, focus, accumulator, title and best-score session state | `core`, `renderer`, SFML Graphics |
-| `core_test` | Headless unit tests for simulation and geometry | `core`, GoogleTest |
+| `input_mapping` | Pure joystick sample mapping and input composition | `core`; no SFML |
+| `renderer` | Procedural game geometry, HUD/menu layout, viewport and clickable action bounds | `core`, `text_renderer`, SFML Graphics |
+| `text_renderer` | Bitmap glyph table, text measurement and drawing | SFML Graphics |
+| `keyboard_input` | Keyboard command mapping and held-key sampling | `core`, SFML Window |
+| `application` | Window/event orchestration, input combination, focus, accumulator, and session state | `core`, `input_mapping`, `renderer`, keyboard/gamepad input, SFML Graphics |
+| `smoke_test` | Display-free simulation check and rendered screenshot check | `core`, `renderer`, SFML Graphics |
+| `gamepad_input.hpp` | Samples the first connected SFML joystick into a value snapshot | `input_mapping`, SFML Window Joystick |
+| `gamepad_test` | Live controller diagram, raw axis/button state, and mapped-action highlights | `input_mapping`, `text_renderer`, SFML Graphics |
+| `core_test` | Headless unit tests for simulation and pure input mapping | `core`, `input_mapping`, GoogleTest |
 | `run.ps1` and `tools/*.ps1` | Windows build/test/coverage/smoke entry points and Bazelisk setup | PowerShell, Visual Studio C++ tools; LLVM for coverage |
 
 ```mermaid
@@ -56,8 +80,36 @@ classDiagram
     class Input {
       +bool left
       +bool right
+      +float turn
       +bool thrust
       +bool fire
+    }
+    class JoystickState {
+      +optional~unsigned int~ index
+      +Identification identification
+      +unsigned int buttonCount
+      +float x
+      +float y
+      +float povX
+      +float povY
+      +Input input
+      +buttonPressed(button) bool
+    }
+    class JoystickInputSample {
+      +float x
+      +float y
+      +float povX
+      +float povY
+      +bool button0
+      +bool button1
+    }
+    class InputMapping {
+      <<module>>
+      +mapJoystickInput(sample) Input
+      +combineInputs(keyboard, joystick) Input
+    }
+    class GamepadDiagnostic {
+      +main()
     }
     class Game {
       -World world_
@@ -121,6 +173,31 @@ classDiagram
       +actionContains(point, bounds) bool
       +view(pixels, bounds) sf::View
     }
+    class TextRenderer {
+      +draw(target, value, position, scale, color, centered)
+      +width(value, scale) float
+    }
+    class KeyboardInput {
+      <<module>>
+      +keyboardCommand(event) KeyboardCommand
+      +readKeyboardInput() Input
+    }
+    class KeyboardCommand {
+      <<enumeration>>
+      none
+      activate
+      togglePause
+      restart
+    }
+    class Application {
+      <<module>>
+      +runGame()
+    }
+    class SmokeTest {
+      <<module>>
+      +runSimulationSmokeTest()
+      +runRenderSmokeTest(directory)
+    }
     class Screen {
       <<enumeration>>
       title
@@ -141,6 +218,17 @@ classDiagram
     World *-- Particle : zero or more
     World o-- Saucer : optional
     Game ..> Input : consumes per tick
+    JoystickState *-- Input : mapped state
+    JoystickState ..> JoystickInputSample : snapshots controls
+    InputMapping ..> JoystickInputSample : transforms
+    InputMapping ..> Input : returns by value
+    GamepadDiagnostic ..> JoystickState : polls and displays
+    GamepadDiagnostic ..> TextRenderer : draws diagram labels
+    Renderer *-- TextRenderer : delegates labels
+    Application ..> KeyboardInput : samples
+    KeyboardInput ..> KeyboardCommand : returns
+    Application ..> JoystickState : samples
+    Application ..> SmokeTest : selected by main
     Renderer ..> Game : reads const state
     Renderer ..> Screen
     World --> Phase
@@ -155,7 +243,7 @@ seed-only constructor, it does not call `restart()` or create a starting wave.
 
 ## Runtime States
 
-The application has a title flag in `main` in addition to `World::phase`.
+The application has a title flag in `runGame()` in addition to `World::phase`.
 Consequently, the title screen is a presentation/application state and is not a
 `Phase` value. The best score is also held by the application and lasts only for
 the current process.
@@ -163,11 +251,11 @@ the current process.
 ```mermaid
 stateDiagram-v2
     [*] --> Title
-    Title --> Playing: Enter or menu click / restart; clear title flag
-    Playing --> Paused: P, Escape, or focus lost
-    Paused --> Playing: P, Escape, Enter, or Resume click
+    Title --> Playing: Enter, menu click, or Start button 7 / restart
+    Playing --> Paused: P, Escape, Start button 7, or focus lost
+    Paused --> Playing: P, Escape, Enter, Start button 7, or Resume click
     Playing --> GameOver: ship loses final life
-    GameOver --> Playing: Enter or Play Again click / restart
+    GameOver --> Playing: Enter, Start button 7, or Play Again click / restart
     Playing --> Playing: R / retain best score, restart
     Paused --> Playing: R / retain best score, restart
     GameOver --> Playing: R / retain best score, restart
@@ -189,7 +277,7 @@ flowchart LR
     Player([Player])
     Developer([Developer / CI])
     Play((Play or resume))
-    Controls((Turn, thrust, fire))
+    Controls((Keyboard or gamepad: turn, thrust, fire))
     Pause((Pause / resume))
     Restart((Restart / play again))
     Observe((View HUD and game state))
@@ -224,10 +312,12 @@ flowchart LR
 
 ### Simulation tick
 
-`Input` is a sampled set of held controls. A true `left` and `right` value
-cancel rotational input; `thrust` accelerates while held; `fire` attempts to
-fire while held, subject to cooldown and shot limits. The core does not know
-about keyboard keys or mouse events.
+`Input` is a sampled set of controls: keyboard `left`/`right`, signed analog
+`turn`, held `thrust`, and held `fire`. The core combines `turn` with the
+keyboard booleans and clamps the result to `[-1, 1]`; opposed keyboard turns
+cancel. Thrust accelerates while held; fire attempts to fire while held,
+subject to cooldown and shot limits. The core does not know about keyboard
+keys, mouse events, joystick APIs, or physical button numbers.
 
 `Game::update(seconds, input)` follows these rules:
 
@@ -248,15 +338,26 @@ unfocused, avoiding a large catch-up burst after a pause.
 
 ### Input mapping
 
-| Game action | Application input |
-| --- | --- |
-| Turn left / right | Left or A / Right or D |
-| Thrust | Up or W |
-| Fire | Space, held for repeated shots |
-| Pause / resume | P or Escape |
-| Start / resume / play again | Enter or click the menu action |
-| Restart | R, outside the title screen |
-| Quit | Close window |
+| Game action | Keyboard / mouse | Gamepad |
+| --- | --- | --- |
+| Turn left / right | Left or A / Right or D | Left stick X outside a 20% dead zone; otherwise D-pad POV X at 50% or beyond |
+| Thrust | Up or W | Dead-zoned left stick Y `< -0.5` or D-pad POV Y `< -50` |
+| Fire | Space, held for repeated shots | Buttons 0 or 1, held for repeated shots |
+| Pause / resume | P or Escape | Start, button 7, on a press edge |
+| Start / resume / play again | Enter or click the menu action | Start, button 7, on a press edge |
+| Restart | R, outside the title screen | - |
+| Quit | Close window | - |
+
+`readJoystick()` in `src/gamepad_input.hpp` is the impure device boundary: it
+samples the first connected SFML joystick into a `JoystickInputSample` and
+returns its detected device metadata. `mapJoystickInput()` is pure and returns
+a new `Input`: it prefers D-pad POV X for turning when its magnitude is at
+least 50%; otherwise it uses the dead-zoned X axis. Stick axes use a 20% dead
+zone; thrust activates when dead-zoned Y is below `-0.5` or POV Y is below
+`-50`. Buttons 0 and 1 feed `Input::fire`. `combineInputs()` returns a new value
+without modifying either source. Button 7 is edge-detected in `application.cpp`
+for start/pause and is not part of the core `Input` structure. Keyboard and
+joystick gameplay input is applied only while the window is focused.
 
 On focus loss, the application clears the focused-input flag and pauses an
 active game. On focus regain it resumes sampling controls, but a paused game
@@ -302,7 +403,7 @@ flowchart TD
     Resize -->|yes| View["Recompute letterboxed view"]
     Resize -->|no| Focus
     View --> Focus["Apply focus and state transitions"]
-    Focus --> Sample["Sample held keys when focused"]
+    Focus --> Sample["Read joystick; combine with keys when focused"]
     Sample --> Active{"Not title, playing, and focused?"}
     Active -->|no| Clear["Clear time accumulator"]
     Active -->|yes| Accumulate["Add min(frame time, 0.1 s)"]
@@ -326,14 +427,14 @@ independent methods.
 
 ```mermaid
 sequenceDiagram
-    participant MainLoop as Main loop
+    participant MainLoop as Application loop
     participant Input as Input sample
     participant Game as Game instance
     participant World as Owned World
     participant RNG as Random engine
     participant Renderer
     participant Target as SFML RenderTarget
-    MainLoop->>Input: Sample focused held keys
+    MainLoop->>Input: readJoystick(); combine with focused keyboard state
     MainLoop->>Game: update(fixedSeconds, Input)
     Game->>World: Check phase and elapsed time
     Game->>World: Move and wrap ship/entities
@@ -381,7 +482,7 @@ flowchart TB
       Bazelisk["Bazelisk 1.26.0 (Windows launcher)"]
       Bazel["Bazel 8.4.2"]
       Cache[("Bazel-managed repository and build caches")]
-      Outputs["Bazel outputs: pebble_blaster, core_test"]
+      Outputs["Bazel outputs: pebble_blaster, gamepad_test, core_test"]
       Source --> Launcher --> Bazelisk --> Bazel
       Bazel <--> Cache
       Bazel --> Outputs
@@ -396,8 +497,8 @@ flowchart TB
     end
     Outputs -->|launch| App
     subgraph CI["CI platforms"]
-      Win["Windows: unit tests, coverage, build"]
-      Linux["Ubuntu: unit tests, Xvfb render smoke"]
+      Win["Windows: unit tests, coverage, build, render smoke"]
+      Linux["Ubuntu: unit tests, simulation-only smoke"]
     end
     Bazel --> Win
     Bazel --> Linux
@@ -405,21 +506,25 @@ flowchart TB
 
 ### Build graph
 
-`BUILD.bazel` defines three targets: `//:core` (`cc_library`),
-`//:renderer` (`cc_library`), and `//:pebble_blaster` (`cc_binary`), plus
-`//:core_test` (`cc_test`). `renderer` depends on `core` and SFML Graphics;
-`pebble_blaster` depends on both libraries and SFML Graphics; `core_test` depends
-only on `core` and GoogleTest. `MODULE.bazel` pins SFML 3.1.0 and GoogleTest
-1.17.0, while `.bazelversion` selects Bazel 8.4.2.
+`BUILD.bazel` defines `//:core`, `//:input_mapping`, and `//:renderer` (`cc_library`),
+`//:pebble_blaster` and `//:gamepad_test` (`cc_binary`), and `//:core_test`
+(`cc_test`). `input_mapping` depends on `core` and has no SFML dependency;
+`renderer` depends on `core` and SFML Graphics and compiles `text_renderer.cpp`.
+The game and gamepad diagnostic both depend on the shared input-mapping
+library; `core_test` depends on `core`, `input_mapping`, and GoogleTest.
+`MODULE.bazel` pins SFML 3.1.0 and GoogleTest 1.17.0, while `.bazelversion`
+selects Bazel 8.4.2.
 
 ### Common commands
 
 | Goal | Windows | Linux / macOS with Bazelisk |
 | --- | --- | --- |
 | Run game | `./run.ps1` | `bazelisk run //:pebble_blaster` |
+| Gamepad diagnostic | `./tools/invoke-bazel.ps1 run //:gamepad_test` | `bazelisk run //:gamepad_test` |
 | Run tests | `./run.ps1 test` | `bazelisk test //...` |
 | Coverage | `./run.ps1 coverage` (Windows LLVM required) | Linux LCOV command in `README.md` |
-| Render smoke | `./run.ps1 smoke` (display required) | `xvfb-run -a bazelisk run //:pebble_blaster -- --smoke-test /absolute/path` |
+| Simulation smoke | `./tools/invoke-bazel.ps1 run //:pebble_blaster -- --simulation-smoke-test` | `bazelisk run //:pebble_blaster -- --simulation-smoke-test` |
+| Render smoke | `./run.ps1 smoke` (display required) | Windows CI only; requires compatible GLX visuals |
 
 On Windows, `tools/invoke-bazel.ps1` discovers Visual Studio C++ tools, downloads
 checksum-verified Bazelisk into the local application cache if absent, and
@@ -433,7 +538,8 @@ platform prerequisites and full commands.
 The game does not save scores, settings, replays, or user data. `World`, random
 state, and the best score are process-memory state; best score is reset when
 the application exits. The renderer generates its visual assets procedurally,
-so there are no runtime font or texture files.
+so there are no runtime font or texture files. `gamepad_test` opens a separate
+SFML window for live controller diagnostics and does not persist device data.
 
 ```mermaid
 flowchart LR
@@ -449,7 +555,7 @@ flowchart LR
 | Location | Contents and lifecycle |
 | --- | --- |
 | Process memory | Live world, PRNG state, and current-process best score; discarded at exit. |
-| `.artifacts/screenshots/` | Eight smoke images by default: four screens at `1200x800` and `600x800`; generated by smoke mode. |
+| `.artifacts/screenshots/` | Eight smoke images by default: four screens at `960x640` and `600x800`; generated by render smoke mode. |
 | `.artifacts/coverage/` | Raw/merged LLVM profiles, coverage summary JSON, and HTML report; generated by the Windows coverage script. |
 | `bazel-bin`, `bazel-out`, `bazel-testlogs` | Bazel output locations/symlinks for built artifacts and test logs; generated and rebuildable. |
 | Bazel-managed cache | Downloaded repositories and build cache outside application-owned game data; location is controlled by Bazel. |
@@ -466,13 +572,14 @@ location is read by gameplay as saved state.
 `scenario()` constructs a deliberately small world for isolated cases, while
 `advance()` runs repeated deterministic ticks. The parameterized
 `RockDestruction` suite is instantiated for all three `RockSize` values. The
-current file defines 32 executed cases when those three parameter values are
+current file defines 35 executed cases when those three parameter values are
 counted separately.
 
 ```mermaid
 flowchart TD
     BazelTest["bazel test //... or run.ps1 test"] --> CoreTarget["//:core_test"]
     CoreTarget --> Fixture["scenario() / advance() helpers"]
+    CoreTarget --> MappingTests["InputMapping: pure transformations"]
     Fixture --> Geometry["Geometry"]
     Fixture --> GameSuite["Game"]
     Fixture --> Ship["Ship"]
@@ -484,15 +591,18 @@ flowchart TD
     Fixture --> Saucers["Saucers"]
     CoreTarget --> Gate["CI: Windows unit tests"]
     CoreTarget --> Coverage["Windows LLVM line/branch gate"]
-    Smoke["Executable --smoke-test"] --> SimCheck["movement + player fire"]
-    Smoke --> RenderCheck["four screens x two aspect ratios"]
-    Smoke --> CI2["CI: Linux under Xvfb"]
+    SimulationSmoke["--simulation-smoke-test"] --> SimCheck["movement + player fire"]
+    RenderSmoke["--smoke-test"] --> SimCheck
+    RenderSmoke --> RenderCheck["four screens x two aspect ratios"]
+    RenderCheck --> CI2["CI: Windows render smoke"]
+    SimulationSmoke --> LinuxSmoke["CI: Linux simulation smoke, no display"]
 ```
 
 ### Suite and case catalog
 
 | Suite | Cases and intended contract |
 | --- | --- |
+| `InputMapping` | `MapsStickDeadZoneAndDpadPriority` checks axis dead zone, POV priority, thrust, and fire mapping; `CombinesSourcesWithoutMutatingThem` checks keyboard/joystick composition and preserves source values. |
 | `Geometry` | `VectorArithmetic` checks vector operations and direction; `WrapsNegativePositiveAndMultipleScreenCrossings` checks positive/negative multi-span wrapping; `CollidesAcrossEdgesAndIncludesTangency` checks toroidal overlap and inclusive radius tangency. |
 | `Game` | `StartsWithThreeLivesAndFourSafeRocks` checks initial state and safe spawn distance; `RejectsInvalidPlayfields` checks dimensions and finiteness; `SeedReproducesWave` checks deterministic seeded wave generation; `PausingFreezesSimulationAndResumes` checks phase/time behavior; `IgnoresInvalidTimeAndCapsLargeSteps` checks invalid deltas and the 50 ms cap. |
 | `Ship` | `TurnsBothWaysAndOpposedControlsCancel` checks angular input; `AcceleratesCoastsAndCapsSpeed` checks thrust, drag, and maximum speed; `WrapsAtThePlayfieldBoundary` checks ship position wrapping. |
@@ -509,19 +619,21 @@ flowchart TD
 - **Unit tests:** `bazel test //...` or `./run.ps1 test`. The target is
   display-independent and tests the gameplay core and geometry through public
   contracts and controlled `World` scenarios.
-- **Coverage:** `./run.ps1 coverage` instruments the core test binary with
-  Windows Clang/LLVM. By default it fails below 95% line or branch coverage.
-  SFML and presentation code are excluded from this measurement; the coverage
-  script also excludes tests and external code from the report.
+- **Coverage:** `./run.ps1 coverage` instruments the core test binary and its
+  `input_mapping` dependency with Windows Clang/LLVM. By default it fails below
+  95% line or branch coverage. SFML and presentation code are excluded from
+  this measurement; the coverage script also excludes tests and external code
+  from the report.
 - **Render smoke:** `./run.ps1 smoke` (or `pebble_blaster --smoke-test <directory>`)
   advances a seeded game with turn/thrust/fire input, verifies ship movement
   and that bullets exist, then renders title, game, pause, and game-over screens
   at landscape and portrait sizes. It requires an OpenGL-capable display and
   checks both a minimum lit-pixel threshold and successful PNG writes. It is an
   integration sanity check, not a pixel-perfect golden-image test.
-- **CI:** `.github/workflows/ci.yml` runs Windows unit tests, coverage, and a
-  game build; Ubuntu runs unit tests and a render smoke check under Xvfb. The
-  Linux job uploads screenshots; Windows uploads coverage artifacts.
+- **CI:** `.github/workflows/ci.yml` runs Windows unit tests, coverage, a game
+  build, and the full render smoke; Ubuntu runs unit tests and the
+  display-independent simulation smoke. Windows uploads coverage and render
+  screenshots.
 
 The core tests use injected seeds and hand-built worlds to avoid depending on
 uncontrolled game startup conditions. Tests assert gameplay outcomes rather

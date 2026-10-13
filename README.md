@@ -4,6 +4,13 @@ A playable C++23 vector arcade game using SFML 3.1 and Bazel. No external
 fonts, textures, working-directory assumptions, or SFML DLL installation.
 Bazel fetches and builds the pinned SFML and GoogleTest dependencies.
 
+## Documentation
+
+- [Software architecture](doc/software_architecture.md): modules, interfaces,
+  workflows, and build/test architecture.
+- [Requirements and traceability](doc/requirements.md): FR/NFR scenarios, linked
+  tests, and the requirement-coverage KPI.
+
 ## Run on Windows
 
 Prerequisite: Visual Studio 2022 or newer with **Desktop development with C++**
@@ -16,6 +23,15 @@ From the project directory:
 powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
 
+To run the Bazel target directly through the repository wrapper:
+
+```powershell
+.\tools\invoke-bazel.ps1 run //:pebble_blaster
+```
+
+After building, the game executable is available at
+`bazel-bin\pebble_blaster.exe` and can be launched directly.
+
 The launcher detects Visual Studio and downloads checksum-verified Bazelisk
 1.26.0 to your local application cache. Bazelisk selects Bazel 8.4.2 using
 `.bazelversion`. No administrator privileges are needed by the launcher.
@@ -27,15 +43,15 @@ The game opens with a **START** action; click it or press Enter.
 
 ## Controls
 
-| Action | Key |
-| --- | --- |
-| Turn | Left/Right or A/D |
-| Thrust | Up or W |
-| Fire | Space (hold for repeated shots) |
-| Pause/resume | P or Escape |
-| Start/resume/play again | Enter, or click the menu action |
-| Restart | R |
-| Quit | Close the window |
+| Action | Key | Gamepad |
+| --- | --- | --- |
+| Turn | Left/Right or A/D | Left stick X or D-pad left/right |
+| Thrust | Up or W | Hold left stick up or D-pad up |
+| Fire | Space | A or B (buttons 0 or 1; hold for repeated shots) |
+| Pause/resume | P or Escape | Start (button 7) |
+| Start/resume/play again | Enter or click the menu action | Start (button 7) |
+| Restart | R | - |
+| Quit | Close the window | - |
 
 ## Gamepad Input Test
 
@@ -56,19 +72,21 @@ of blinking protection. Best score is retained for the current session.
 Losing focus pauses the game. Resizing letterboxes the same playfield rather
 than stretching it or changing the simulation.
 
+On Linux, run:
+
+```sh
+bazelisk run //:gamepad_test
+```
+
+The window displays the first connected controller, its detected axes and
+buttons, and highlights the inputs mapped to turn, thrust, fire, and Start.
+Close the window to exit.
+
 ### Pairing a controller
 
-Since this question comes up from time to time:
-
-Any Bluetooth game controller must be paired with your computer before usage.
-Pairing mode of the controller is often activated by
-
-- pressing a button **share** and **home/PS** together for 3 to 5 seconds or
-- pressing a button **❤️** followed by an additional button to activate pairing
-
-When controller's pairing mode is activated it is a matter of adding the controller as an input device on your operating system.
-
-Consult your specific controller's manual if needed.
+Pair the Bluetooth controller with your operating system before starting the
+diagnostic. Pairing controls vary by model; consult the controller's manual for
+the correct button combination, then add it as a Bluetooth device in your OS.
 
 ## Tests and coverage
 
@@ -102,9 +120,10 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 coverage
 This builds the GTests with Clang-cl instrumentation, executes them, and writes
 LLVM JSON and HTML reports under `.artifacts/coverage` (`summary.json` and
 `html\index.html`). It fails below **95% line or 95% branch coverage**.
-Measurement includes the gameplay core and its header, excluding GTest, SFML,
-and presentation code. Rendering and window/input integration are checked
-separately by the smoke command, not counted as unit-test coverage.
+Measurement includes the gameplay core and the pure `input_mapping` module,
+excluding GTest, SFML, device polling, and presentation code. Rendering and
+window/input integration are checked separately by the smoke command, not
+counted as unit-test coverage.
 
 ### Render smoke check
 
@@ -159,9 +178,18 @@ CI runs the full rendering smoke check on Windows instead.
 
 - `core`: SFML-free simulation with value types and an explicit world snapshot.
   `Game::update` is the only simulation tick; the renderer gets const state.
-- `renderer`: procedural line geometry and bitmap lettering; no file assets.
-- `main`: SFML events, input sampling, focus handling, and a bounded accumulator
-  stepping the simulation at 120 Hz independently of rendering speed.
+- `input_mapping`: pure value-in/value-out joystick mapping and keyboard/gamepad
+  input composition; source inputs are not mutated.
+- `renderer`: procedural game geometry and HUD/menu layout.
+- `text_renderer`: bitmap glyph table, text measurement, and text drawing; no
+  external font assets.
+- `keyboard_input`: keyboard command mapping and held-key sampling.
+- `application`: SFML event/focus handling and a bounded accumulator stepping
+  the simulation at 120 Hz independently of rendering speed.
+- `smoke_test`: display-free simulation check and screenshot render check.
+- `main`: command-line mode dispatch and top-level error handling.
+- `gamepad_test`: standalone live controller diagnostics using the shared
+  joystick input adapter.
 - `core_test`: deterministic GTest scenarios covering movement, wrapping,
   collisions, splitting, scoring, lives, cooldowns, timers, and state transitions.
 
